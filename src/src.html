@@ -728,7 +728,7 @@ function L2(){
  place(SG,MESH.bed,-10.5,0,-34.6,Math.PI/2);addCol(-11.5,-9.5,-35.1,-34.1,1);place(SG,MESH.cabinet,-11.5,0,-27,Math.PI/2);addCol(-11.8,-11.2,-27.45,-26.55,1.8);place(SG,MESH.crate,-3,0,-35);addCol(-3.35,-2.65,-35.3,-34.7,.6);
  pickup(-4,-34.5,'drink',1);pickup(-10,-33,'ammoS',4);pickup(1.3,-28,'ammoP',8);
  inter(0,-44,()=>{if(!P.keys.has('rust')){say(['一扇厚重的铁门。门上的牌子写着 B1 EXECUTION ROOM。','锁住了。']);return false;}
-  say(['锈蚀的钥匙插进锁孔，铁门发出刺耳的呻吟……'],()=>{state='cut';sfx.door();fade(1,1.4,0x000000,()=>{buildLevel(2);fade(0,1.8,0x000000);card('CHAPTER III','EXECUTION');});});return false;},{sx:0,sy:1.3,sz:-44.6,r:1.8});
+  say(['锈蚀的钥匙插进锁孔，铁门发出刺耳的呻吟……'],()=>{state='cut';sfx.door();fade(1,1.4,0x000000,()=>{buildLevel(2);state='play';fade(0,1.8,0x000000);card('CHAPTER III','EXECUTION');});});return false;},{sx:0,sy:1.3,sz:-44.6,r:1.8});
  addLight(0,2.8,-10,[.9,.18,.08],9,1);addLight(0,2.8,-31,[.9,.18,.08],9,1);addLight(7,2.8,-19,[.7,.25,.12],8,1);addLight(-7,2.8,-7,[.5,.2,.1],7,1);
  for(const l of lights){BX(SG,l.p[0],H,l.p[2],.3,.3,.25,TI.rust);BX(SG,l.p[0],H-.25,l.p[2],.12,.12,.12,TI.bulb,[1,.5,.4],1);}
  for(const[x,z]of[[0,-12],[-1,-25],[.5,-38],[-9,-9],[8,-16.5],[6,-21.5],[-8,-33.5],[.4,-18],[-5,-27]])spawn('nurse',x,z);
@@ -925,7 +925,9 @@ function toTitle(){ui.credits.classList.add('hide');setTheme(null);buildLevel(0)
 let last=performance.now()/1000,T=0,titleA=0;
 buildLevel(0);fade(0,2.5,0x000000);
 function frame(){requestAnimationFrame(frame);const now=performance.now()/1000;const dt=Math.min(.05,now-last);last=now;step(dt);}
+let cutT=0;
 function step(dt){T+=dt;textT+=dt;updTweens(dt);
+ if(state==='cut'){cutT+=dt;if(cutT>6&&!tweens.length&&curLevel<3){state='play';PU.fade=0;}}else cutT=0;
  if(state==='title'){if(jact('interact')||jact('attack'))startGame();}
  else if(state==='text'){if(jact('interact')||jact('attack'))nextText();}
  else if(state==='play'){playTime+=dt;
