@@ -62,7 +62,7 @@ html,body{margin:0;height:100%;background:#000;overflow:hidden;touch-action:none
     <div class="t">MEMO</div><div id="mobj"></div>
     <div class="t">WEAPONS</div><div id="mweap"></div>
     <div class="t">ITEMS</div><div id="mitem"></div>
-    <div class="help">键盘：↑↓ 前进/后退　←→ 转身　Shift 奔跑　Z 瞄准(锁定)　X/空格 攻击　E/Enter 调查　F 手电　Q 换武器　H 回复　Tab 菜单</div>
+    <div class="help">键盘：↑↓ 前进/后退　←→ 转身　Shift 奔跑　Z 瞄准(锁定)　X/空格 攻击　E/Enter 调查　F 手电　Q 换武器　H 回复　Tab 菜单　P PS1 滤镜开关</div>
     <div class="it" id="mclose" style="margin-top:12px">RETURN</div>
   </div></div>
   <div id="dead" class="hide"><h1>YOU DIED</h1><p>PRESS E / TAP TO CONTINUE</p></div>
@@ -121,7 +121,12 @@ void main(){float f=vT.z;vec2 uv;vec4 tx;
  if(f>3.5&&f<4.5){tx=texture2D(uCh,vUV);}else if(f>4.5){tx=texture2D(uMo,vUV);}else{
  if(f>2.5){uv=vec2((vT.x+clamp(vUV.x,.004,.996)*4.)/8.,(vT.y+1.-clamp(vUV.y,.02,.98))/16.);}
  else{vec2 q=clamp(fract(vUV),.008,.992);uv=vec2((vT.x+q.x)/8.,(vT.y+1.-q.y)/16.);}
- tx=texture2D(uAtlas,uv);}if(tx.a<.5)discard;
+ #ifdef HAS_LOD
+ vec2 sc=f>2.5?vec2(.5,1./16.):vec2(1./8.,1./16.);vec2 gx=dFdx(vUV)*sc,gy=dFdy(vUV)*sc;float gL=max(length(gx*512.),length(gy*1024.))+1e-5;float k=min(1.,6./gL);tx=texture2DGradEXT(uAtlas,uv,gx*k,gy*k);
+ #else
+ tx=texture2D(uAtlas,uv);
+ #endif
+ }if(tx.a<.5)discard;
  vec3 b=tx.rgb*vC;float fg=clamp((vD-uFogR.x)/(uFogR.y-uFogR.x),0.,1.);
  if(f>1.5&&f<2.5){gl_FragColor=vec4(b*(1.-fg),1.);return;}
  vec3 col;
@@ -141,16 +146,18 @@ void main(){float f=vT.z;vec2 uv;vec4 tx;
 const SVS=`attribute vec3 aP;uniform mat4 uLVP,uM;void main(){gl_Position=uLVP*uM*vec4(aP,1.);}`;
 const SFS=`precision highp float;void main(){vec4 e=fract(gl_FragCoord.z*vec4(1.,255.,65025.,16581375.));e-=e.yzww*vec4(1./255.,1./255.,1./255.,0.);gl_FragColor=e;}`;
 const PVS=`attribute vec3 aP;varying vec2 vUv;void main(){vUv=aP.xy*.5+.5;gl_Position=vec4(aP.xy,0.,1.);}`;
-const PFS=`precision highp float;uniform sampler2D uT;uniform vec2 res;uniform float time,fade,hurt,grain,scan;uniform vec3 fadeColor,tint;varying vec2 vUv;
+const PFS=`precision highp float;uniform sampler2D uT;uniform vec2 res;uniform float time,fade,hurt,grain,scan,retro;uniform vec2 upsc;uniform vec3 fadeColor,tint;varying vec2 vUv;
 float b2(vec2 a){a=floor(a);return fract(a.x/2.+a.y*a.y*.75);}float b4(vec2 a){return b2(.5*a)*.25+b2(a);}
 float h(vec2 p){return fract(sin(dot(p,vec2(12.9898,78.233)))*43758.5453);}
-void main(){vec2 px=floor(vUv*res);vec3 c=texture2D(uT,(px+.5)/res).rgb*tint;
+void main(){vec2 pp=vUv*res,px=floor(pp);vec2 off=clamp((fract(pp)-.5)*upsc,-.5,.5)+.5;vec3 c=texture2D(uT,(px+off)/res).rgb*tint;
  vec2 q=vUv-.5;c*=1.-dot(q,q)*1.15;
  c=mix(c,vec3(c.r*.9+.2,c.g*.2,c.b*.2),hurt);c=mix(c,fadeColor,fade);
- c=floor(c*31.+b4(px))/31.;c+=(h(px+floor(time*6.)*vec2(17.,31.))-.5)*grain*.3;if(mod(px.y,2.)<1.)c*=1.-scan*.6;gl_FragColor=vec4(c,1.);}`;
-const PR=prog(VS,FS),PS=prog(SVS,SFS),PP=prog(PVS,PFS);
+ if(retro>.5){c=floor(c*63.+b4(px))/63.;c+=(h(px)-.5)*grain*.2;if(mod(px.y,2.)<1.)c*=1.-scan*.5;}gl_FragColor=vec4(c,1.);}`;
+const EXT_LOD=gl.getExtension('EXT_shader_texture_lod'),EXT_DER=gl.getExtension('OES_standard_derivatives'),HAS_LOD=!!(EXT_LOD&&EXT_DER);
+const FS2=HAS_LOD?'#extension GL_EXT_shader_texture_lod : enable\n#extension GL_OES_standard_derivatives : enable\n#define HAS_LOD\n'+FS:FS;
+const PR=prog(VS,FS2),PS=prog(SVS,SFS),PP=prog(PVS,PFS);
 function mkFBO(w,h){const t=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D,t);gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,w,h,0,gl.RGBA,gl.UNSIGNED_BYTE,null);for(const[k,v]of[[gl.TEXTURE_MIN_FILTER,gl.NEAREST],[gl.TEXTURE_MAG_FILTER,gl.NEAREST],[gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE],[gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE]])gl.texParameteri(gl.TEXTURE_2D,k,v);const rb=gl.createRenderbuffer();gl.bindRenderbuffer(gl.RENDERBUFFER,rb);gl.renderbufferStorage(gl.RENDERBUFFER,gl.DEPTH_STENCIL,w,h);const f=gl.createFramebuffer();gl.bindFramebuffer(gl.FRAMEBUFFER,f);gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,gl.TEXTURE_2D,t,0);gl.framebufferRenderbuffer(gl.FRAMEBUFFER,gl.DEPTH_STENCIL_ATTACHMENT,gl.RENDERBUFFER,rb);gl.bindFramebuffer(gl.FRAMEBUFFER,null);return{f,t,w,h};}
-const FB=mkFBO(RW,RH),SHF=mkFBO(512,512);
+const FB=mkFBO(RW,RH),SHF=mkFBO(512,512);gl.bindTexture(gl.TEXTURE_2D,FB.t);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
 const quadBuf=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,quadBuf);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,0,1,-1,0,1,1,0,-1,-1,0,1,1,0,-1,1,0]),gl.STATIC_DRAW);
 function drawBuf(pr,buf,n,stride){if(!n)return;for(let i=0;i<8;i++)gl.disableVertexAttribArray(i);gl.bindBuffer(gl.ARRAY_BUFFER,buf);const S=stride||56;const set=(k,sz,off)=>{const l=pr.at[k];if(l>=0){gl.enableVertexAttribArray(l);gl.vertexAttribPointer(l,sz,gl.FLOAT,false,S,off);}};set('aP',3,0);if(S===56){set('aN',3,12);set('aUV',2,24);set('aT',3,32);set('aC',3,44);}gl.drawArrays(gl.TRIANGLES,0,n);}
 
@@ -264,8 +271,8 @@ function paintAtlas(){
   const gr=A2.createRadialGradient(128,32,40,128,32,150);gr.addColorStop(0,'rgba(0,0,0,0)');gr.addColorStop(1,'rgba(10,6,2,.55)');A2.fillStyle=gr;A2.fillRect(0,0,256,64);A2.restore();NZ(x,y,22,700+k,256,64);});
 }
 paintAtlas();
-const atlasTex=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D,atlasTex);gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,AC);
-for(const[k,v]of[[gl.TEXTURE_MIN_FILTER,gl.NEAREST],[gl.TEXTURE_MAG_FILTER,gl.NEAREST],[gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE],[gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE]])gl.texParameteri(gl.TEXTURE_2D,k,v);
+const atlasTex=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D,atlasTex);gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,AC);gl.generateMipmap(gl.TEXTURE_2D);
+for(const[k,v]of[[gl.TEXTURE_MIN_FILTER,HAS_LOD?gl.NEAREST_MIPMAP_LINEAR:gl.NEAREST],[gl.TEXTURE_MAG_FILTER,gl.NEAREST],[gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE],[gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE]])gl.texParameteri(gl.TEXTURE_2D,k,v);
 
 /* ================= GEOMETRY BUILDERS ================= */
 class Geo{constructor(cap=1024){this.a=new Float32Array(cap*14);this.n=0;}
@@ -422,7 +429,7 @@ const WM={katana:mesh(g=>{TB(g,0,.06,0,.04,.035,.035,.03,.24,TI.leather);BX(g,0,
 function b64buf(s){const bin=atob(s),u=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);return u.buffer;}
 function texFromURI(uri){const t=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D,t);gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,1,1,0,gl.RGBA,gl.UNSIGNED_BYTE,new Uint8Array([128,128,128,255]));
  for(const[k,v]of[[gl.TEXTURE_MIN_FILTER,gl.NEAREST],[gl.TEXTURE_MAG_FILTER,gl.NEAREST],[gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE],[gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE]])gl.texParameteri(gl.TEXTURE_2D,k,v);
- if(uri){const im=new Image();im.onload=()=>{gl.bindTexture(gl.TEXTURE_2D,t);gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,im);};im.src=uri;}return t;}
+ if(uri){const im=new Image();im.onload=()=>{gl.bindTexture(gl.TEXTURE_2D,t);gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,im);gl.generateMipmap(gl.TEXTURE_2D);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.NEAREST_MIPMAP_LINEAR);};im.src=uri;}return t;}
 const CHTEX={hero:texFromURI(typeof HERO_ATLAS!=='undefined'?HERO_ATLAS:null),mon:texFromURI(typeof MON_ATLAS!=='undefined'?MON_ATLAS:null)};
 function glbRig(M,flag,emis){M._g=M._g||{};const buf=M._buf||(M._buf=b64buf(M.bin)),nodes={};
  for(const p of M.parts){let g=M._g[p.name]||null;if(p.nv&&!g){const P=new Float32Array(buf,p.off,p.nv*3),Nn=new Float32Array(buf,p.off+p.nv*12,p.nv*3),U=new Float32Array(buf,p.off+p.nv*24,p.nv*2),I=new Uint16Array(buf,p.off+p.nv*32,p.ni);
@@ -573,13 +580,16 @@ function renderMenu(){const st=P.hp>70?['FINE','#5fbf4a']:P.hp>40?['CAUTION','#d
  if(P.drinks>0){const d=document.createElement('div');d.className='it';d.textContent=`急救药 ×${P.drinks}（点击使用）`;d.onclick=()=>{heal(true);renderMenu();};it.appendChild(d);}
  const KN={gate:'医院正门钥匙',rust:'锈蚀的钥匙'};for(const k of P.keys){const d=document.createElement('div');d.className='it';d.textContent=KN[k];it.appendChild(d);}
  if(P.radio){const d=document.createElement('div');d.className='it';d.textContent='便携收音机';it.appendChild(d);}
+ const rf=document.createElement('div');rf.className='it';rf.textContent='PS1 画面滤镜：'+(PU.retro?'开':'关')+'（P 键）';rf.onclick=()=>{toggleRetro();renderMenu();};it.appendChild(rf);
  const d=document.createElement('div');d.className='it';d.textContent='手电筒（'+(P.flash?'开':'关')+'）';d.onclick=()=>{P.flash=!P.flash;renderMenu();};it.appendChild(d);}
 const ecg=$('ecg').getContext('2d');let ecgX=0;
 function drawECG(){const col=P.hp>70?'#5fbf4a':P.hp>40?'#d0c040':P.hp>20?'#e07a20':'#e02a20';const rate=P.hp>40?1:1.7;for(let k=0;k<2;k++){ecgX=(ecgX+1)%160;const ph=(performance.now()/1000*rate*1.2)%1;let y=24;if(ph<.06)y=24-ph/.06*18;else if(ph<.1)y=6+(ph-.06)/.04*28;else if(ph<.14)y=34-(ph-.1)/.04*10;ecg.fillStyle='#000';ecg.fillRect(ecgX,0,3,40);ecg.fillStyle=col;ecg.fillRect(ecgX,y,2,2);}}
 
+function toggleRetro(){PU.retro=!PU.retro;try{localStorage.setItem('mw_retro',PU.retro?'1':'0');}catch(e){}P.hudT=0;ui.hud.textContent='';card(PU.retro?'PS1 FILTER ON':'PS1 FILTER OFF');}
+try{if(localStorage.getItem('mw_retro')==='0')PU.retro=false;}catch(e){}
 /* ================= INPUT ================= */
 const K={},just=new Set();
-const MAP={up:['ArrowUp','KeyW','tUp'],down:['ArrowDown','KeyS','tDown'],left:['ArrowLeft','KeyA','tLeft'],right:['ArrowRight','KeyD','tRight'],run:['ShiftLeft','ShiftRight','tRun'],aim:['KeyZ','KeyL','tAim'],attack:['KeyX','KeyK','Space','tAtk'],interact:['KeyE','Enter','KeyC','tAct'],flash:['KeyF','tFlash'],menu:['Tab','KeyM','Escape','tMenu'],swap:['KeyQ','tSwap'],heal:['KeyH','tHeal']};
+const MAP={up:['ArrowUp','KeyW','tUp'],down:['ArrowDown','KeyS','tDown'],left:['ArrowLeft','KeyA','tLeft'],right:['ArrowRight','KeyD','tRight'],run:['ShiftLeft','ShiftRight','tRun'],aim:['KeyZ','KeyL','tAim'],attack:['KeyX','KeyK','Space','tAtk'],interact:['KeyE','Enter','KeyC','tAct'],flash:['KeyF','tFlash'],retro:['KeyP'],menu:['Tab','KeyM','Escape','tMenu'],swap:['KeyQ','tSwap'],heal:['KeyH','tHeal']};
 const act=a=>MAP[a].some(k=>K[k]),jact=a=>MAP[a].some(k=>just.has(k));
 addEventListener('keydown',e=>{if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space','Tab'].includes(e.code))e.preventDefault();if(!K[e.code])just.add(e.code);K[e.code]=true;});
 addEventListener('keyup',e=>{K[e.code]=false;});addEventListener('blur',()=>{for(const k in K)K[k]=false;});
@@ -590,7 +600,7 @@ const unlock=()=>initAudio();addEventListener('pointerdown',unlock);addEventList
 /* ================= TWEEN / FADE ================= */
 const tweens=[];function tween(dur,fn,done){tweens.push({t:0,dur,fn,done});}
 function updTweens(dt){for(let i=tweens.length-1;i>=0;i--){const w=tweens[i];w.t+=dt;const k=Math.min(1,w.t/w.dur);if(w.fn)w.fn(k);if(k>=1){tweens.splice(i,1);if(w.done)w.done();}}}
-const PU={fade:1,fadeColor:[0,0,0],hurt:0,grain:.07,tint:[1,1,1]};
+const PU={retro:true,fade:1,fadeColor:[0,0,0],hurt:0,grain:.07,tint:[1,1,1]};
 function fade(to,dur,color,done){const from=PU.fade;if(color!=null)PU.fadeColor=[(color>>16&255)/255,(color>>8&255)/255,(color&255)/255];tween(dur,k=>PU.fade=lerp(from,to,k),done);}
 
 /* ================= PHYSICS ================= */
@@ -879,7 +889,7 @@ function render(){
   drawBuf(PS,sBuf,sN);drawBuf(PS,dBuf,DG.n);drawList(PS);}
  // 主场景
  gl.bindFramebuffer(gl.FRAMEBUFFER,FB.f);gl.viewport(0,0,RW,RH);const fg=ENV.fog||[0,0,0];gl.clearColor(fg[0],fg[1],fg[2],1);gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
- const u=PR.u;gl.useProgram(PR.p);gl.uniformMatrix4fv(u.uVP,false,VPm);gl.uniformMatrix4fv(u.uLVP,false,LVP);gl.uniformMatrix4fv(u.uM,false,ID4);gl.uniform2f(u.uSnap,RW/2,RH/2);
+ const u=PR.u;gl.useProgram(PR.p);gl.uniformMatrix4fv(u.uVP,false,VPm);gl.uniformMatrix4fv(u.uLVP,false,LVP);gl.uniformMatrix4fv(u.uM,false,ID4);gl.uniform2f(u.uSnap,PU.retro?RW:8192,PU.retro?RH:8192);
  gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,atlasTex);gl.uniform1i(u.uAtlas,0);gl.activeTexture(gl.TEXTURE1);gl.bindTexture(gl.TEXTURE_2D,SHF.t);gl.uniform1i(u.uShadow,1);gl.activeTexture(gl.TEXTURE2);gl.bindTexture(gl.TEXTURE_2D,CHTEX.hero);gl.uniform1i(u.uCh,2);gl.activeTexture(gl.TEXTURE3);gl.bindTexture(gl.TEXTURE_2D,CHTEX.mon);gl.uniform1i(u.uMo,3);gl.activeTexture(gl.TEXTURE0);
  gl.uniform3fv(u.uAmb,ENV.amb||[.3,.3,.3]);gl.uniform3fv(u.uSky,ENV.sky||[0,0,0]);gl.uniform3fv(u.uGnd,ENV.gnd||[0,0,0]);gl.uniform3fv(u.uSunD,ENV.sunD||[0,-1,0]);gl.uniform3fv(u.uSunC,ENV.sunC||[0,0,0]);gl.uniform3fv(u.uFog,fg);gl.uniform2f(u.uFogR,ENV.near||1,ENV.far||20);
  gl.uniform3fv(u.uSpP,sp.p);gl.uniform3fv(u.uSpD,sp.d);const si=spOn?(ENV.ash==='ember'?2.6:1.3):0;gl.uniform3f(u.uSpC,si,si*.95,si*.82);gl.uniform2f(u.uSpCone,Math.cos(.55),Math.cos(.42));gl.uniform1f(u.uShOn,spOn&&ENV.ash==='ember'?1:0);
@@ -888,7 +898,7 @@ function render(){
  if(XG.n){gl.enable(gl.BLEND);gl.blendFunc(gl.ONE,gl.ONE);gl.depthMask(false);drawBuf(PR,xBuf,XG.n);gl.depthMask(true);gl.disable(gl.BLEND);}
  // 后期
  gl.bindFramebuffer(gl.FRAMEBUFFER,null);gl.viewport(0,0,canvas.width,canvas.height);gl.disable(gl.DEPTH_TEST);gl.useProgram(PP.p);gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,FB.t);
- const q=PP.u;gl.uniform1i(q.uT,0);gl.uniform2f(q.res,RW,RH);gl.uniform1f(q.time,T);gl.uniform1f(q.fade,PU.fade);gl.uniform3fv(q.fadeColor,PU.fadeColor);gl.uniform1f(q.hurt,PU.hurt);gl.uniform1f(q.grain,PU.grain);gl.uniform1f(q.scan,.07);gl.uniform3fv(q.tint,PU.tint);
+ const q=PP.u;gl.uniform1i(q.uT,0);gl.uniform2f(q.res,RW,RH);gl.uniform2f(q.upsc,canvas.width/RW,canvas.height/RH);gl.uniform1f(q.retro,PU.retro?1:0);gl.uniform1f(q.time,T);gl.uniform1f(q.fade,PU.fade);gl.uniform3fv(q.fadeColor,PU.fadeColor);gl.uniform1f(q.hurt,PU.hurt);gl.uniform1f(q.grain,PU.grain);gl.uniform1f(q.scan,.07);gl.uniform3fv(q.tint,PU.tint);
  drawBuf(PP,quadBuf,6,12);}
 function handPos(){let out=[P.pos.x,1.2,P.pos.z];const walk=(n,pm)=>{const m=pm?mulA(pm,locM(n)):locM(n);if(n===P.m.hand){out=[m[3],m[7],m[11]];return true;}for(const c of n.k)if(walk(c,m))return true;return false;};walk(P.m.root);return out;}
 function resize(){const w=innerWidth,h=innerHeight;let cw=w,ch=w*.75;if(ch>h){ch=h;cw=h/.75;}const portrait=h>w*1.1;const left=(w-cw)/2,top=portrait?Math.min(40,(h-ch)/2):(h-ch)/2;
@@ -913,7 +923,7 @@ function step(dt){T+=dt;textT+=dt;updTweens(dt);
  else if(state==='text'){if(jact('interact')||jact('attack'))nextText();}
  else if(state==='play'){playTime+=dt;
   if(jact('menu'))openMenu();
-  else{if(jact('flash'))P.flash=!P.flash;if(jact('swap'))cycleWeapon();if(jact('heal'))heal();
+  else{if(jact('flash'))P.flash=!P.flash;if(jact('retro'))toggleRetro();if(jact('swap'))cycleWeapon();if(jact('heal'))heal();
    for(const k of['Digit1','Digit2','Digit3'])if(just.has(k)){const w=['katana','pistol','shotgun'][+k[5]-1];if(P.has[w]){P.weapon=w;P.hudT=2;}}
    updPlayer(dt);for(const e of enemies.slice())updEnemy(e,dt);
    for(const tr of triggers)if(!tr.done&&P.pos.z<tr.z){tr.done=true;tr.fn();}
@@ -926,7 +936,7 @@ function step(dt){T+=dt;textT+=dt;updTweens(dt);
  else if(state==='credits'){if(jact('interact'))toTitle();}
  if(state!=='play')ui.prompt.classList.add('hide');
  for(const u of updaters)u(dt);
- for(const l of lights)if(l.flick){l.t-=dt;if(l.t<=0){l.t=.05+Math.random()*.25;const k=Math.random()<.15?.12:(.7+Math.random()*.5);l.c=l.base.map(v=>v*k);}}
+ for(const l of lights)if(l.flick){l.t-=dt;if(l.t<=0){l.t=.12+Math.random()*.35;const k=Math.random()<.06?.55:(.82+Math.random()*.22);l.c=l.base.map(v=>v*k);}}
  muzzleT-=dt;updParticles(dt);updRadio();
  P.hurtFx=Math.max(0,P.hurtFx-dt*2);PU.hurt=P.hurtFx*.5+(P.hp<30&&state==='play'?(.12+.08*Math.sin(T*5)):0);
  P.emptyT-=dt;if(state==='play'&&P.weapon&&(P.hudT>0||act('aim')||P.emptyT>0)){ui.hud.textContent=(P.emptyT>0?'NO AMMO  ':'')+WNAME[P.weapon]+(P.weapon==='pistol'?`　${P.ammo.p}`:P.weapon==='shotgun'?`　${P.ammo.s}`:'');}else ui.hud.textContent='';
